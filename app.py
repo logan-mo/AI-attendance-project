@@ -4,7 +4,7 @@ from variables import (
     trainer_path,
     workbook_path,
     detector_frontalface_default_path,
-    dataset_path
+    dataset_path,
 )
 from datetime import datetime
 import streamlit as st
@@ -14,107 +14,110 @@ import xlsxwriter
 import cv2
 import os
 
+
 def add_data(face_id):
     face_id = int(face_id)
     frame_placeholder = st.empty()
-    
-    cam = cv2.VideoCapture(0)
-    cam.set(3, 640) # set video width
-    cam.set(4, 480) # set video height
 
-    #frontal_face_default
+    cam = cv2.VideoCapture(0)
+    cam.set(3, 640)  # set video width
+    cam.set(4, 480)  # set video height
+
+    # frontal_face_default
     face_detector = cv2.CascadeClassifier(detector_frontalface_default_path)
 
     print("\n [INFO] Initializing face capture. Look the camera and wait ...")
     # Initialize individual sampling face count
     count = 0
 
-    while(True):
-
+    while True:
         ret, img = cam.read()
-        img = cv2.flip(img, 1) # flip video image vertically
+        img = cv2.flip(img, 1)  # flip video image vertically
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         faces = face_detector.detectMultiScale(gray, 1.3, 5)
 
-        for (x,y,w,h) in faces:
-
-            cv2.rectangle(img, (x,y), (x+w,y+h), (255,0,0), 2)
+        for x, y, w, h in faces:
+            cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
             count += 1
 
             # Save the captured image into the datasets folder
-            cv2.imwrite("dataset/User." + str(face_id) + '.' + str(count) + ".jpg", gray[y:y+h,x:x+w])
+            cv2.imwrite(
+                "dataset/User." + str(face_id) + "." + str(count) + ".jpg",
+                gray[y : y + h, x : x + w],
+            )
 
             frame_placeholder.image(img, channels="BGR")
 
-        k = cv2.waitKey(100) & 0xff # Press 'ESC' for exiting video
+        k = cv2.waitKey(100) & 0xFF  # Press 'ESC' for exiting video
         if k == 27:
             break
-        elif count >= 30: # Take 30 face sample and stop video
+        elif count >= 30:  # Take 30 face sample and stop video
             break
 
     # Do a bit of cleanup
     print("\n [INFO] Exiting Program and cleanup stuff")
     cam.release()
     cv2.destroyAllWindows()
-    
-    
-def train():
 
+
+def train():
     # Path for face image database
-    #path = 'dataset'
-    path=dataset_path
+    # path = 'dataset'
+    path = dataset_path
     recognizer = cv2.face.LBPHFaceRecognizer_create()
-    #detector_frontalface_default
-    detector = cv2.CascadeClassifier(detector_frontalface_default_path);
+    # detector_frontalface_default
+    detector = cv2.CascadeClassifier(detector_frontalface_default_path)
 
     # function to get the images and label data
     def getImagesAndLabels(path):
-
-        imagePaths = [os.path.join(path,f) for f in os.listdir(path)]
-        faceSamples=[]
+        imagePaths = [os.path.join(path, f) for f in os.listdir(path)]
+        faceSamples = []
         ids = []
 
         for imagePath in imagePaths:
             print(imagePath)
 
-            PIL_img = Image.open(imagePath).convert('L') # convert it to grayscale
+            PIL_img = Image.open(imagePath).convert("L")  # convert it to grayscale
 
-            img_numpy = np.array(PIL_img,'uint8')
+            img_numpy = np.array(PIL_img, "uint8")
 
             id = int(os.path.split(imagePath)[-1].split(".")[1])
             print("id", id)
-            faces = detector.detectMultiScale(img_numpy,scaleFactor=1.3, minNeighbors=4, minSize=(30, 30),flags=cv2.CASCADE_SCALE_IMAGE)
+            faces = detector.detectMultiScale(
+                img_numpy,
+                scaleFactor=1.3,
+                minNeighbors=4,
+                minSize=(30, 30),
+                flags=cv2.CASCADE_SCALE_IMAGE,
+            )
 
-
-            for (x,y,w,h) in faces:
-                faceSamples.append(img_numpy[y:y+h,x:x+w])
+            for x, y, w, h in faces:
+                faceSamples.append(img_numpy[y : y + h, x : x + w])
                 ids.append(id)
 
-        return faceSamples,ids
+        return faceSamples, ids
 
-    print ("\n [INFO] Training faces. It will take a few seconds. Wait ...")
-    faces,ids = getImagesAndLabels(path)
+    print("\n [INFO] Training faces. It will take a few seconds. Wait ...")
+    faces, ids = getImagesAndLabels(path)
     recognizer.train(faces, np.array(ids))
 
     # Save the model into trainer/trainer.yml
-    #trainer
-    recognizer.write(trainer_path) # recognizer.save() worked on Mac, but not on Pi
+    # trainer
+    recognizer.write(trainer_path)  # recognizer.save() worked on Mac, but not on Pi
 
     # Print the numer of faces trained and end program
     print("\n [INFO] {0} faces trained. Exiting Program".format(len(np.unique(ids))))
-    
-def take_attendance():
 
+
+def take_attendance():
     frame_placeholder = st.empty()
 
     # to get unique values from attendnace list
     def unique(list1):
         x = np.array(list1)
 
-
     now = datetime.now()
     current_date_time = now.strftime("%d-%m-%Y %H-%M-%S")
-
 
     # Create a workbook and add a worksheet for each session of attendance.
     # workbook_path
@@ -126,7 +129,6 @@ def take_attendance():
     worksheet.write("A1", "Serial No.")
     worksheet.write("B1", "Name")
     worksheet.write("C1", "Status")
-
 
     recognizer = cv2.face.LBPHFaceRecognizer_create()
 
@@ -209,9 +211,7 @@ def take_attendance():
         if k == 27:
             break
 
-
     present_employees = np.unique(present_employees)
-
 
     # differnce of present and absent students list from original dataset
     # z=x xor y ; elements of x minus y
@@ -241,7 +241,6 @@ def take_attendance():
         row += 1
         count += 1
 
-
     workbook.close()
     print("\n [INFO] Attendance Taken and Saved in Excel Sheet :) ")
     # Do a bit of cleanup
@@ -249,32 +248,29 @@ def take_attendance():
     cam.release()
     cv2.destroyAllWindows()
 
+
 def local_css(file_name):
     with open(file_name) as f:
         st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
 
 
-
 def main():
-    
     st.set_page_config(
         page_title="AI Attendance",
         page_icon="icon.png",
         layout="centered",
         initial_sidebar_state="expanded",
     )
-    
+
     local_css("streamlit_styling.css")
 
     st.title("Automated Attendance using AI")
     st.sidebar.header("Menu")
-    
+
     face_id = st.sidebar.text_input("Enter new Employee id:")
-    
+
     employee_Data = st.sidebar.button(
-        "Add Employee Data", 
-        on_click=add_data,
-        args=(face_id,)
+        "Add Employee Data", on_click=add_data, args=(face_id,)
     )
     checkbox_state = st.sidebar.button(
         "Train",
