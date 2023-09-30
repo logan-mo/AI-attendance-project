@@ -1,0 +1,5 @@
+section[data-testid="stSidebar"] div.stButton button {
+    background-color: brown;
+    width: 200px;
+    justify-content: center;
+}
