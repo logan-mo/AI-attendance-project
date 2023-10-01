@@ -1,5 +1,6 @@
 numpy==1.24.2
-opencv-contrib-python-headless
+opencv_contrib_python==4.8.0.76
+opencv_python==4.7.0.72
 Pillow==9.5.0
 #Pillow==10.0.1
 XlsxWriter==3.1.4

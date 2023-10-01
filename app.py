@@ -1,22 +1,31 @@
-import variables
-from variables import (
-    employee_names,
-    trainer_path,
-    workbook_path,
-    detector_frontalface_default_path,
-    dataset_path,
-)
 from datetime import datetime
 import streamlit as st
 from PIL import Image
+import pandas as pd
 import numpy as np
 import xlsxwriter
 import cv2
 import os
 
+current_folder = os.getcwd()
+print("Current Working Directory: ", current_folder)
+
+dataset_path = os.path.join(current_folder, "dataset")
+trainer_path = os.path.join(current_folder, "trainer", "trainer.yml")
+detector_frontalface_default_path = os.path.join(
+    current_folder, "Cascades", "haarcascade_frontalface_default.xml"
+)
+workbook_path = os.path.join(current_folder, "Attendance")
+
+
+def reset(frame_placeholder):
+    frame_placeholder.empty()
+
 
 def add_data(face_id):
-    face_id = int(face_id)
+    if face_id == "" or face_id is None:
+        st.error("Please enter a valid id")
+        return
     frame_placeholder = st.empty()
 
     cam = cv2.VideoCapture(0)
@@ -57,6 +66,7 @@ def add_data(face_id):
     # Do a bit of cleanup
     print("\n [INFO] Exiting Program and cleanup stuff")
     cam.release()
+    frame_placeholder.empty()
     cv2.destroyAllWindows()
 
 
@@ -81,7 +91,7 @@ def train():
 
             img_numpy = np.array(PIL_img, "uint8")
 
-            id = int(os.path.split(imagePath)[-1].split(".")[1])
+            id = os.path.split(imagePath)[-1].split(".")[1]
             print("id", id)
             faces = detector.detectMultiScale(
                 img_numpy,
@@ -99,7 +109,15 @@ def train():
 
     print("\n [INFO] Training faces. It will take a few seconds. Wait ...")
     faces, ids = getImagesAndLabels(path)
-    recognizer.train(faces, np.array(ids))
+    print("ids", ids)
+    unique_names = list(set(ids))
+    print("unique_names", unique_names)
+    pd.DataFrame({"employee_names": unique_names}).to_csv(
+        "employee_names.csv", index=False
+    )
+
+    id_indices = [unique_names.index(id) for id in ids]
+    recognizer.train(faces, np.array(id_indices))
 
     # Save the model into trainer/trainer.yml
     # trainer
@@ -107,23 +125,20 @@ def train():
 
     # Print the numer of faces trained and end program
     print("\n [INFO] {0} faces trained. Exiting Program".format(len(np.unique(ids))))
+    st.error("Training Complete")
 
 
 def take_attendance():
     frame_placeholder = st.empty()
-
-    # to get unique values from attendnace list
-    def unique(list1):
-        x = np.array(list1)
 
     now = datetime.now()
     current_date_time = now.strftime("%d-%m-%Y %H-%M-%S")
 
     # Create a workbook and add a worksheet for each session of attendance.
     # workbook_path
-    workbook_path = f"""{variables.workbook_path} {str(current_date_time)}.xlsx"""
+    workbook_file_path = os.path.join(workbook_path, f"{str(current_date_time)}.xlsx")
 
-    workbook = xlsxwriter.Workbook(workbook_path)
+    workbook = xlsxwriter.Workbook(workbook_file_path)
 
     worksheet = workbook.add_worksheet()
     worksheet.write("A1", "Serial No.")
@@ -145,6 +160,7 @@ def take_attendance():
     id = 0
 
     # names related to ids: example ==> Marcelo: id=1,  etc
+    employee_names = pd.read_csv("employee_names.csv")["employee_names"].tolist()
     print("Names:", employee_names)
     names = employee_names
 
@@ -160,6 +176,7 @@ def take_attendance():
     minW = 0.1 * cam.get(3)
     minH = 0.1 * cam.get(4)
 
+    count = 0
     while True:
         ret, img = cam.read()
         img = cv2.flip(img, 1)  # Flip vertically
@@ -177,7 +194,6 @@ def take_attendance():
             cv2.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
             id, confidence = recognizer.predict(gray[y : y + h, x : x + w])
-
             # Check if confidence is less than 100 ==> "0" is perfect match
             if confidence < 100:
                 # IF id has a name, label the image as that name, else just put out the index number
@@ -185,7 +201,6 @@ def take_attendance():
                     id = names[id]
                 except IndexError as e:
                     id = id
-                new_confidence = "  {0}%".format(round(100 - confidence))
 
                 # writing attendance to excel sheet
                 # only consider those students present whose confidence is more than 50%
@@ -196,19 +211,24 @@ def take_attendance():
 
             elif confidence < 50:
                 id = "unknown"
-                new_confidence = "  {0}%".format(round(100 - confidence))
 
             cv2.putText(img, str(id), (x + 5, y - 5), font, 1, (255, 255, 255), 2)
             # print("Name of Student : " + str(id))
             # print("Confidence : " + str(confidence))
             cv2.putText(
-                img, str(new_confidence), (x + 5, y + h - 5), font, 1, (255, 255, 0), 1
+                img,
+                str(round(confidence)),
+                (x + 5, y + h - 5),
+                font,
+                1,
+                (255, 255, 0),
+                1,
             )
 
         frame_placeholder.image(img, channels="BGR")
+        count += 1
 
-        k = cv2.waitKey(10) & 0xFF  # Press 'ESC' for exiting video
-        if k == 27:
+        if count == 300:
             break
 
     present_employees = np.unique(present_employees)
@@ -247,6 +267,14 @@ def take_attendance():
     print("\n [INFO] Exiting Program and cleanup stuff")
     cam.release()
     cv2.destroyAllWindows()
+
+    btn_report_gen = st.button(
+        "Stop",
+        on_click=reset,
+        args=(frame_placeholder,),
+    )
+
+    st.error(f"Attendace saved as: {workbook_file_path}")
 
 
 def local_css(file_name):
